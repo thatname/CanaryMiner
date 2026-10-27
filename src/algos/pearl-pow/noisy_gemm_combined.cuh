@@ -21,6 +21,9 @@ __device__ __forceinline__ void mbarArrive(uint64_t* barrier) {
 __global__ __launch_bounds__(512,1) void combinedKernel(
     const __grid_constant__ CUtensorMap aMap,const __grid_constant__ CUtensorMap bMap,
     int m,int n,ScanOutput scan) {
+#if defined(CANARY_TMA_DELIVERY_DEVICE_UNAVAILABLE)
+    __trap();
+#else
     extern __shared__ __align__(1024) int8_t storage[];
     auto* barriers=reinterpret_cast<uint64_t*>(storage+AsymPayloadBytes);
     uint64_t* emptyA=barriers+5;
@@ -140,5 +143,6 @@ __global__ __launch_bounds__(512,1) void combinedKernel(
         previousRow=rowBase;previousCol=colBase;
         if(tile==1 && threadIdx.x<CombinedMessages) combinedHash(scratch,rowBase,colBase,n,scan);
     }
+#endif
 }
 } // namespace om::pearl::tma_delivery

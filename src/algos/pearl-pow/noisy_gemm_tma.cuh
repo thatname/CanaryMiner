@@ -7,7 +7,10 @@
 #include "noisy_gemm.cuh"
 #include "cta_traversal.h"
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ != 1200
+#if !defined(CANARY_PEARL_AMPERE_BUILD)
 #error "Canary TMA WM8 experiment requires native SM120"
+#endif
+#define CANARY_TMA_WM8_DEVICE_UNAVAILABLE 1
 #endif
 namespace om::pearl::tma_wm8 {
 constexpr int StageBytes=64*(256+128), Stages=3;
@@ -41,6 +44,9 @@ template<bool Traversal16x32=false>
 __global__ __launch_bounds__(512,1) void kernel(
     const __grid_constant__ CUtensorMap aMap,const __grid_constant__ CUtensorMap bMap,
     int32_t* c,uint32_t* transcript,int m,int n) {
+#if defined(CANARY_TMA_WM8_DEVICE_UNAVAILABLE)
+    __trap();
+#else
     extern __shared__ __align__(1024) int8_t storage[];
     auto* barriers=reinterpret_cast<uint64_t*>(storage+Stages*StageBytes);
     int blocksN=n/128,blocksM=m/256,linear=blockIdx.x+blockIdx.y*blocksN;
@@ -135,6 +141,7 @@ __global__ __launch_bounds__(512,1) void kernel(
                 transcript[size_t(flat)*16+lane]=slots[i][j];
             }
         }
+#endif
 }
 inline CUresult encode(CUtensorMap* map,void* source,int rows,int tileRows) {
     if(!map||!source||rows<=0||(reinterpret_cast<uintptr_t>(source)&15) ||

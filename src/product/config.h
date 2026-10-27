@@ -97,7 +97,7 @@ struct ProductConfig {
     LogConfig log;
     std::string stateDir = "state";
     unsigned drainSeconds = 10;
-    bool donation = true;  // developer donation (1%, 99:1); on by default, opt out with "donation": false or --no-donation
+    bool donation = false;  // developer donation (1%, 99:1); off by default in this fork, opt in with "donation": true
     GpuTuningConfig tuning;
 };
 

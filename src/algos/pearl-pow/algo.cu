@@ -1364,7 +1364,14 @@ class PearlPow : public Algorithm {
             exactTileNamed=true;
 #endif
         // Prefix filters still request automatic tuning within that family.
-        if (kK == 8192 && getenv("CANARY_PEARL_SHAPE") != nullptr &&
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+        // The Ampere build mines at K2048 on a desktop GPU, whose timing never meets the tuner's spread bound, so it
+        // accepts the same exact operator pin the K8192 build does.
+        constexpr bool kExactPinAllowed = true;
+#else
+        constexpr bool kExactPinAllowed = kK == 8192;
+#endif
+        if (kExactPinAllowed && getenv("CANARY_PEARL_SHAPE") != nullptr &&
             exactTileNamed) {
             uint32_t exactM = 0, exactN = 0;
             if (!pearl::tuner::parseExactShapePin(getenv("CANARY_PEARL_SHAPE"),

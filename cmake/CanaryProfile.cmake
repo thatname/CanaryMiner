@@ -1,7 +1,7 @@
 # Production build profiles. The definitions are the ones the qualified v18 (SM120) native was built with.
 # CANARY_PEARL_ENABLE_SM120_NATIVE_EVIDENCE marks the SM120 native build for the product layer.
-set(CANARY_PROFILE "production-sm120" CACHE STRING "production-sm120 or tests")
-set_property(CACHE CANARY_PROFILE PROPERTY STRINGS production-sm120 tests)
+set(CANARY_PROFILE "production-sm120" CACHE STRING "production-sm120, ampere-sm86 or tests")
+set_property(CACHE CANARY_PROFILE PROPERTY STRINGS production-sm120 ampere-sm86 tests)
 
 if(CANARY_PROFILE STREQUAL "tests")
   return()
@@ -25,6 +25,22 @@ if(CANARY_PROFILE STREQUAL "production-sm120")
     CANARY_PEARL_COMPRESSIBLE_MATRICES=1
     CANARY_PEARL_MIXED_SCHEDULE_PROBE=1
     CANARY_PEARL_ENABLE_TMA_EARLY_FUSION=1)
+elseif(CANARY_PROFILE STREQUAL "ampere-sm86")
+  # Ampere (RTX 30-series) port: the production definitions minus the ones tied to SM120 hardware (native evidence, TMA
+  # early fusion) or to K8192 (large shapes, shape experiment, pinned timing). Mining runs the generic mma.sync int8 kernels at the default
+  # K2048 through the tile auto-tuner. CANARY_PEARL_AMPERE_BUILD stubs the TMA kernel bodies and admits Ampere SKUs.
+  set(CANARY_CUDA_ARCH "86")
+  set(CANARY_INCLUDE_DIRS src/core src)
+  set(CANARY_DEFINITIONS
+    CANARY_PEARL_ONLY_BUILD=1
+    CANARY_PEARL_AMPERE_BUILD=1
+    CANARY_PEARL_ASYNC_SUBMIT_EXPERIMENT=1
+    CANARY_PEARL_GUARD_RETIREMENT_EXPERIMENT=1
+    CANARY_PEARL_ENABLE_PRIVATE_GENERIC_LOOKAHEAD=1
+    CANARY_PEARL_ENABLE_ATTEMPT_OVERLAP=1
+    CANARY_PEARL_ENABLE_PUBLIC_GENERIC_LOOKAHEAD=1
+    CANARY_PEARL_COMPRESSIBLE_MATRICES=1
+    CANARY_PEARL_MIXED_SCHEDULE_PROBE=1)
 else()
   message(FATAL_ERROR "Unknown CANARY_PROFILE: ${CANARY_PROFILE}")
 endif()

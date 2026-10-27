@@ -36,8 +36,12 @@ struct DeviceSku {
 
 inline const DeviceSku *deviceAllowlist(size_t *count) {
     static const DeviceSku kSkus[] = {
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+        {"NVIDIA GeForce RTX 3080", 8, 6, "SM86"},
+#else
         {"NVIDIA GeForce RTX 5070", 12, 0, "SM120"},
         {"NVIDIA GeForce RTX 5080", 12, 0, "SM120"},
+#endif
     };
     *count = sizeof(kSkus) / sizeof(kSkus[0]);
     return kSkus;

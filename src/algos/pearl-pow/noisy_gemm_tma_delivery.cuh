@@ -7,7 +7,12 @@
 #include "noisy_gemm.cuh"
 #include "blake3.cuh"
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ != 1200
+#if !defined(CANARY_PEARL_AMPERE_BUILD)
 #error "Canary TMA WM8 experiment requires native SM120"
+#endif
+// Ampere build: the TMA kernels exist for the host dispatch, which refuses any device but 12.0 before launch. Their
+// device bodies trap instead of carrying TMA/mbarrier PTX the target cannot assemble.
+#define CANARY_TMA_DELIVERY_DEVICE_UNAVAILABLE 1
 #endif
 namespace om::pearl::tma_delivery {
 constexpr int CommonDim=8192, Rank=128, Blocks=CommonDim/64;
@@ -109,6 +114,9 @@ template<bool Fused=false,bool EarlyReuse=false,bool AsymmetricB=false>
 __global__ __launch_bounds__(512,1) void kernel(
     const __grid_constant__ CUtensorMap aMap,const __grid_constant__ CUtensorMap bMap,
     int32_t* c,uint32_t* transcript,int m,int n,ScanOutput scan={}) {
+#if defined(CANARY_TMA_DELIVERY_DEVICE_UNAVAILABLE)
+    __trap();
+#else
     extern __shared__ __align__(1024) int8_t storage[];
     static_assert(!AsymmetricB || (Fused && EarlyReuse),"candidate keeps v15 early/fused path");
     auto* barriers=reinterpret_cast<uint64_t*>(storage+(AsymmetricB?AsymPayloadBytes:Stages*StageBytes));
@@ -259,6 +267,7 @@ __global__ __launch_bounds__(512,1) void kernel(
             fusedScanTile(scratch+lane*16,flat,scan);
         }
     }
+#endif
 }
 inline CUresult encode(CUtensorMap* map,void* source,int rows,int tileRows,int tileK=64) {
     if(!map||!source||rows<=0||(reinterpret_cast<uintptr_t>(source)&15) ||

@@ -10,8 +10,11 @@
 # Needs CMake 3.31+ (architecture-specific "a" targets) and a CUDA 13.1 toolkit. nvcc needs MSVC as its host compiler on
 # Windows; a Windows build has not been attempted in Gate 1a.
 
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.28)
 include(cmake/CanaryProfile.cmake)
+if(CANARY_PROFILE STREQUAL "production-sm120" AND CMAKE_VERSION VERSION_LESS 3.31)
+  message(FATAL_ERROR "production-sm120 needs CMake 3.31+ for the architecture-specific 120a target")
+endif()
 
 option(CANARY_FEE_TEST_POLICY "Build the explicitly test-only accelerated donation schedule" OFF)
 

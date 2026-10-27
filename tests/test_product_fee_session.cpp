@@ -450,7 +450,7 @@ int main() {
     // ---- the donation is ON by default; --no-donation and "donation": false make it inert: no scheduler, no window, no state file
     {
         ProductConfig def;
-        CHECK(def.donation && donationActive(def));  // default on (a destination is compiled in)
+        CHECK(!def.donation && !donationActive(def));  // default off in this fork
         ProductConfig fileOff;
         std::string err;
         CHECK(parseConfig("{\"schema_version\":1,\"donation\":false}", &fileOff, &err) && !fileOff.donation && !donationActive(fileOff));

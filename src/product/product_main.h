@@ -78,6 +78,8 @@ inline bool loadProductConfig(const std::string &path, ProductConfig *cfg, std::
 inline std::string buildArchLabel() {
 #if defined(CANARY_PEARL_ENABLE_SM120_NATIVE_EVIDENCE)
     return "SM120";
+#elif defined(CANARY_PEARL_AMPERE_BUILD)
+    return "SM86";
 #else
     return "host-only";
 #endif
@@ -86,6 +88,8 @@ inline std::string buildArchLabel() {
 inline int compiledCc() {
 #if defined(CANARY_PEARL_ENABLE_SM120_NATIVE_EVIDENCE)
     return 120;
+#elif defined(CANARY_PEARL_AMPERE_BUILD)
+    return 86;
 #else
     return 0;
 #endif
@@ -95,8 +99,13 @@ inline int compiledCc() {
  *  kernel/tile auto-tuner, which never settles on a shared desktop GPU. Returns false for a host-only build (no kernels). */
 inline bool fixedSelectionFor(int cc, std::string *shape, std::string *tile) {
     if (cc == 120) { *shape = "16384x131072"; *tile = "n64 k64 4x4/2x4"; return true; }
+    // RTX 3080, measured with this build's own tile timing: ptx k64 4x4/4x2 leads at every shape.
+    if (cc == 86) { *shape = "4096x32768"; *tile = "ptx k64 4x4/4x2"; return true; }
     return false;
 }
+
+/** CANARY_PEARL_PRODUCT_FIXED_SELECTION admits only the SM120 K8192 shape/tile; other builds pin through SHAPE/TILE alone. */
+inline bool productFixedSelectionFlagFor(int cc) noexcept { return cc == 120; }
 
 inline const char *productTmaDataflowFor(int cc) noexcept {
     return cc == 120 ? "combined-v1" : nullptr;
@@ -122,6 +131,7 @@ inline void applyProductFixedSelection() {
         setenv("CANARY_PEARL_TMA_DATAFLOW", dataflow, 0);
 #endif
     }
+    if (!productFixedSelectionFlagFor(compiledCc())) return;
 #ifdef _WIN32
     _putenv_s("CANARY_PEARL_PRODUCT_FIXED_SELECTION", "1");
 #else
