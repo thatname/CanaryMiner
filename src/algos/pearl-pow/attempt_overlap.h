@@ -30,12 +30,15 @@ inline AttemptOverlapMode parseAttemptOverlap(const char *text) noexcept {
            std::string_view(text) == "a-prep64-v1" ? AttemptOverlapMode::APrep64V1 :
                                                    AttemptOverlapMode::Invalid;
 }
+// Admitted on any pool and in the synthetic bench: the overlap changes only
+// which stream A is prepared on, never the work or the proof. Formal timing
+// and the per-stage profiler still refuse it, since both assume one stream.
 inline bool attemptOverlapAdmission(AttemptOverlapMode mode, bool compiled,
                                     bool formal, bool profiling, bool synthetic,
                                     std::string_view host, int port) noexcept {
     if (mode == AttemptOverlapMode::Disabled) return true;
-    return attemptOverlapEnabled(mode) && compiled && !formal && !synthetic &&
-           !profiling && host == "127.0.0.1" && port > 0 && port <= 65535;
+    return attemptOverlapEnabled(mode) && compiled && !formal && !profiling &&
+           (synthetic || (!host.empty() && port > 0 && port <= 65535));
 }
 
 // This is the actual CUDA overlap driver's ordering, also executable with a
