@@ -63,6 +63,9 @@
 #include "merkle_proof_cache.h"
 #include "compact_merkle_proof.h"
 #include "noisy_gemm.cuh"
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+#include "noisy_gemm_ampere.cuh"
+#endif
 #include "tma_fused_scan_policy.h"
 #include "noisy_gemm_tma_delivery.cuh"
 #include "noisy_gemm_combined.cuh"
@@ -489,6 +492,12 @@ constexpr TileConfig makeTileConfig() noexcept {
         return {plan, &launchTiledAsync<plan.wm, plan.wn, plan.tm, plan.tn>};
     } else {
         static_assert(plan.family == kPtx, "unknown CUDA launch family");
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+        if constexpr (Token == CudaPreparationPlanToken::AmpereBk128Wm2Wn4Tm4Tn4)
+            return {plan, &ampere::launch<plan.wm, plan.wn, plan.tm, plan.tn,
+                                          plan.blockK, plan.stages, plan.groupM>};
+        else
+#endif
         return {plan, &launchPtx<plan.wm, plan.wn, plan.tm, plan.tn,
                                 plan.blockK, plan.stages, plan.groupM>};
     }
@@ -549,6 +558,9 @@ constexpr TileConfig kTileConfigs[] = {
     makeTileConfig<CudaPreparationPlanToken::PtxBk32Wm4Wn4Tm2Tn4>(),
     makeTileConfig<CudaPreparationPlanToken::PtxBk32Wm8Wn2Tm2Tn2>(),
     makeTileConfig<CudaPreparationPlanToken::PtxBk32Wm4Wn8Tm2Tn2>(),
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+    makeTileConfig<CudaPreparationPlanToken::AmpereBk128Wm2Wn4Tm4Tn4>(),
+#endif
     // Measured and REJECTED, so not carried as candidates (each one costs
     // tuning time on every start). All judged end to end, on both a 4090 and
     // a 5080, by adding them here and seeing whether the tuner ever chose one:
@@ -3406,9 +3418,16 @@ class PearlPow : public Algorithm {
             if(tma_fused::parse(getenv("CANARY_PEARL_TMA_DATAFLOW"))!=fusedMode_ ||
                shape_.m!=16384 || shape_.n!=131072 || kK!=8192 || kRank!=128 ||
                ((!shapeOwnedGuard_ || !shapeBounded_) && !productTmaCombinedAllowed())) return false;
-            applyNoiseAPacked<<<dim3(kK/1024,shape_.m/8),256,0,stream>>>(
+            applyNoiseAPacked<8192><<<dim3(kK/1024,shape_.m/8),256,0,stream>>>(
                 a.raw,dEAL_,dArF_,dArS_,a.noised);
-        } else applyNoiseA<<<(aBytes + threads - 1) / threads, threads, 0, stream>>>(
+        }
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+        // The packed kernel at this build's K: 84 -> ~20 us per 4096-row A on an RTX 3080.
+        else if (kRank == 128 && shape_.m % 8 == 0)
+            applyNoiseAPacked<kK><<<dim3(kK/1024,shape_.m/8),256,0,stream>>>(
+                a.raw,dEAL_,dArF_,dArS_,a.noised);
+#endif
+        else applyNoiseA<<<(aBytes + threads - 1) / threads, threads, 0, stream>>>(
             a.raw, dEAL_, dArF_, dArS_, a.noised, shape_.m, kK, kRank);
         if (profile) profiler_.boundary(5, stream);
         if (cudaGetLastError() != cudaSuccess) return false;
@@ -3958,6 +3977,14 @@ class PearlPow : public Algorithm {
     void merkleRootOn(const uint8_t *data, uint32_t chunks, uint8_t *root,
                       cudaStream_t stream, unsigned cap = 256,
                       uint8_t *aCommit = nullptr, bool *fusedEnqueued = nullptr) {
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+        // 155 -> ~30 us for a 4096-row A on an RTX 3080: vector loads, and 32-thread blocks so the
+        // 8192 chunk threads reach every SM instead of 32 of them.
+        if ((reinterpret_cast<uintptr_t>(data) & 15) == 0)
+            chunkCvsAligned<<<(chunks + 31) / 32, 32, 0, stream>>>(
+                data, chunks, (const uint32_t *)dJobKey_, dScratch_);
+        else
+#endif
         chunkCvs<<<(chunks + cap - 1) / cap, cap, 0, stream>>>(
             data, chunks, (const uint32_t *)dJobKey_, dScratch_);
         uint32_t count = chunks;

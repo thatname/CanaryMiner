@@ -34,6 +34,11 @@ inline constexpr CudaPreparationShapeDescriptor kCudaPreparationShapes[] = {
     {"m16384-n131072", 16384, 131072},
     {"m131072-n131072", 131072, 131072},
 #endif
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+    // SM86 at K2048: wider n amortises the per-attempt A preparation further.
+    {"m4096-n131072", 4096, 131072},
+    {"m4096-n262144", 4096, 262144},
+#endif
     {"m4096-n65536", 4096, 65536},
     {"m8192-n16384", 8192, 16384},
     {"m4096-n32768", 4096, 32768},
@@ -114,6 +119,7 @@ enum class CudaPreparationPlanToken : uint16_t {
     ExperimentalSm120TmaTraversal16x32 = 0x002f,
     ExperimentalSm120TmaTraversal16x32Stage4 = 0x0031,
     ExperimentalSm120TmaDeliveryK8192 = 0x0032,
+    AmpereBk128Wm2Wn4Tm4Tn4 = 0x0033,
 };
 
 constexpr uint64_t cudaPreparationPlanId(
@@ -303,6 +309,14 @@ inline constexpr CudaPreparationPlanDescriptor kCudaPreparationPlans[] = {
         "ptx k32 4x8/2x2", "cuda-ptx-mma-s8-v1",
         "wm4-wn8-tm2-tn2-bk32-st3-gm8", kPtx, 4, 8, 2, 2,
         32, 3, 8, minimumTileArchitecture(80)),
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+    // SM86: 128x256 block, 8 warps of 64x64, k128 stages XOR-swizzled instead of
+    // padded so two of them fit in 96 KB. noisy_gemm_ampere.cuh; rank 128 only.
+    makeCudaPreparationPlan(CudaPreparationPlanToken::AmpereBk128Wm2Wn4Tm4Tn4,
+        "amp k128 2x4/4x4", "cuda-ampere-mma-s8-swizzle-v1",
+        "wm2-wn4-tm4-tn4-bk128-st2-gm8-swz", kPtx, 2, 4, 4, 4,
+        128, 2, 8, minimumTileArchitecture(80)),
+#endif
 };
 
 inline constexpr size_t kCudaPreparationPlanCount =
@@ -569,7 +583,11 @@ constexpr const CudaPreparationPlanDescriptor &cudaPreparationPlan() noexcept {
 }
 
 constexpr bool cudaPreparationPlanCatalogValid() noexcept {
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+    if (kCudaPreparationPlanCount != 39) return false;
+#else
     if (kCudaPreparationPlanCount != 38) return false;
+#endif
     for (size_t i = 0; i < kCudaPreparationPlanCount; ++i) {
         const auto &plan = kCudaPreparationPlans[i];
         if (static_cast<uint16_t>(plan.token) == 0 ||
@@ -599,6 +617,13 @@ constexpr bool cudaPreparationPlanCatalogValid() noexcept {
                     plan.stages != 4 || plan.groupM != 0) return false;
                 break;
             case kPtx:
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+                if (plan.token == CudaPreparationPlanToken::AmpereBk128Wm2Wn4Tm4Tn4) {
+                    if (!plan.nMajorB || plan.blockK != 128 || plan.stages != 2 ||
+                        plan.groupM != 8) return false;
+                    break;
+                }
+#endif
                 if (!plan.nMajorB ||
                     (plan.blockK != 32 && plan.blockK != 64) ||
                     plan.stages != 3 || plan.groupM != 8) return false;

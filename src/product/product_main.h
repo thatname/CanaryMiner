@@ -99,8 +99,10 @@ inline int compiledCc() {
  *  kernel/tile auto-tuner, which never settles on a shared desktop GPU. Returns false for a host-only build (no kernels). */
 inline bool fixedSelectionFor(int cc, std::string *shape, std::string *tile) {
     if (cc == 120) { *shape = "16384x131072"; *tile = "n64 k64 4x4/2x4"; return true; }
-    // RTX 3080, measured with this build's own tile timing: ptx k64 4x4/4x2 leads at every shape.
-    if (cc == 86) { *shape = "4096x32768"; *tile = "ptx k64 4x4/4x2"; return true; }
+    // RTX 3080: the SM86 kernel (noisy_gemm_ampere.cuh) measured 107 against 81 T MAC/s for ptx k64 4x4/4x2.
+    // n=65536 halves the per-attempt A preparation's share. The 3080's 5 MB L2 never held B at n=32768
+    // either, so unlike a 4090 the wider shape loses nothing in the GEMM: 93.9 against 88.6 T MAC/s end to end.
+    if (cc == 86) { *shape = "4096x65536"; *tile = "amp k128 2x4/4x4"; return true; }
     return false;
 }
 

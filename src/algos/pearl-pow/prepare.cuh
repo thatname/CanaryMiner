@@ -216,6 +216,37 @@ __global__ void chunkCvs(const uint8_t *__restrict__ data, uint32_t chunks,
 }
 
 /**
+ * As chunkCvs, for 16-byte-aligned data. A block's sixteen little-endian words
+ * are four vector loads rather than sixty-four byte loads, which is most of
+ * what chunkCvs spends its time on. Launch with small blocks: at one thread per
+ * chunk, a 4096x2048 A is only 8192 threads, and 256-thread blocks put them on
+ * 32 SMs.
+ */
+__global__ void chunkCvsAligned(const uint8_t *__restrict__ data, uint32_t chunks,
+                                const uint32_t *__restrict__ key,
+                                uint8_t *__restrict__ cvs) {
+    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= chunks) return;
+    uint32_t cv[8];
+#pragma unroll
+    for (int j = 0; j < 8; j++) cv[j] = key[j];
+    const uint4 *chunk = reinterpret_cast<const uint4 *>(data + (size_t)i * b3d::kChunkLenD);
+    for (int b = 0; b < 16; b++) {
+        uint32_t block[16];
+#pragma unroll
+        for (int q = 0; q < 4; q++) {
+            const uint4 v = chunk[b * 4 + q];
+            block[q * 4] = v.x; block[q * 4 + 1] = v.y; block[q * 4 + 2] = v.z; block[q * 4 + 3] = v.w;
+        }
+        uint32_t flags = b3d::kKeyedHash;
+        if (b == 0) flags |= b3d::kChunkStart;
+        if (b == 15) flags |= b3d::kChunkEnd;
+        b3d::compress(cv, block, i, 64u, flags);
+    }
+    b3d::storeCv(cv, cvs + (size_t)i * 32);
+}
+
+/**
  * Reduce 2*blockDim.x chaining values to one, per block.
  *
  * Doing several tree levels inside one launch rather than one level per launch

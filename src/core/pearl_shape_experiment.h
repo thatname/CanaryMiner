@@ -19,7 +19,7 @@ inline bool pearlProductFixedSelectionActive() noexcept {
 inline bool pearlProductFixedSelectionMatches(const char *shape, const char *tile) noexcept {
 #if defined(CANARY_PEARL_AMPERE_BUILD)
     // The SM86 build's fixed selection (product_main.h fixedSelectionFor(86)).
-    return shape && tile && !std::strcmp(shape, "4096x32768") && !std::strcmp(tile, "ptx k64 4x4/4x2");
+    return shape && tile && !std::strcmp(shape, "4096x65536") && !std::strcmp(tile, "amp k128 2x4/4x4");
 #else
     return shape && tile && !std::strcmp(shape, kPearlExactK8192Shape) &&
         !std::strcmp(tile, pearlProductFixedTile());

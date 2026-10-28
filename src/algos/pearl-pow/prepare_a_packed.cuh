@@ -2,10 +2,13 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 namespace om::pearl {
-// Exact K8192/rank128, eight rows per block; no raw/committed data mutation.
+// Exact rank128, eight rows per block; no raw/committed data mutation.
 // Each thread owns four columns and reuses their indices across eight rows.
+// kK is the row stride: K8192 for the SM120 combined path, K2048 on SM86.
+template<int kK=8192>
 __global__ void applyNoiseAPacked(const int8_t* raw,const int8_t* eAL,
     const uint16_t* first,const uint16_t* second,int8_t* output) {
+    static_assert(kK%1024==0,"one block covers 1024 columns");
     __shared__ uint32_t noiseWords[8*128/4];
     const int rowBase=blockIdx.y*8,col=blockIdx.x*1024+threadIdx.x*4;
     noiseWords[threadIdx.x]=reinterpret_cast<const uint32_t*>(eAL+rowBase*128)[threadIdx.x];
@@ -16,7 +19,7 @@ __global__ void applyNoiseAPacked(const int8_t* raw,const int8_t* eAL,
     const auto* noise=reinterpret_cast<const int8_t*>(noiseWords);
     #pragma unroll
     for(int row=0;row<8;++row) {
-        const size_t offset=size_t(rowBase+row)*8192+col;
+        const size_t offset=size_t(rowBase+row)*kK+col;
         const uint32_t packed=reinterpret_cast<const uint32_t*>(raw+offset)[0];
         uint32_t result=0;
         #pragma unroll
