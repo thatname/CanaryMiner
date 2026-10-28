@@ -1116,7 +1116,7 @@ class PearlPow : public Algorithm {
         }
         if(pearlPublicEnabled(publicExecution_) && arch10_!=static_cast<int>(pearlPublicArchitecture(publicExecution_)))
             return false; // Captured public architecture must match before tuning or allocation.
-        if (attemptOverlapEnabled(overlapMode_) && arch10_ != 120 && arch10_ != 86)
+        if (attemptOverlapEnabled(overlapMode_) && arch10_ != 120 && arch10_ != 86 && arch10_ != 89)
             return false; // No architecture-range fallback.
         if (!arch10_) {
             fprintf(stderr,

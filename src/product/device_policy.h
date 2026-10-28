@@ -38,6 +38,9 @@ inline const DeviceSku *deviceAllowlist(size_t *count) {
     static const DeviceSku kSkus[] = {
 #if defined(CANARY_PEARL_AMPERE_BUILD)
         {"NVIDIA GeForce RTX 3080", 8, 6, "SM86"},
+        {"NVIDIA GeForce RTX 3090", 8, 6, "SM86"},
+        // Ada runs the SM86 cubin unchanged (same major, higher minor); see compiledCcRuns.
+        {"NVIDIA GeForce RTX 4090", 8, 9, "SM89"},
 #else
         {"NVIDIA GeForce RTX 5070", 12, 0, "SM120"},
         {"NVIDIA GeForce RTX 5080", 12, 0, "SM120"},
@@ -53,6 +56,17 @@ struct DeviceVerdict {
     std::string reason;  // empty when allowed
 };
 
+/** Whether a native built for `compiledCc` loads on a device of `cc` (both x10). The SM120 build targets 120a, an
+ *  architecture-specific cubin that runs on 12.0 only. The SM86 build is a plain sm_86 cubin, which CUDA runs on any 8.x
+ *  device of the same or a higher minor (8.6, 8.9). */
+inline bool compiledCcRuns(int compiledCc, int cc) {
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+    return cc / 10 == compiledCc / 10 && cc >= compiledCc;
+#else
+    return cc == compiledCc;
+#endif
+}
+
 /** Decide whether `d` may run. `compiledCc` is the native's architecture (120), or 0 to skip that check. */
 inline DeviceVerdict checkDevice(const DeviceIdentity &d, int compiledCc = 0) {
     DeviceVerdict v;
@@ -62,8 +76,12 @@ inline DeviceVerdict checkDevice(const DeviceIdentity &d, int compiledCc = 0) {
     for (size_t i = 0; i < n; ++i)
         if (d.name == skus[i].name) hit = &skus[i];
     if (!hit) {
-        v.reason = "CanaryMiner supports NVIDIA Blackwell (RTX 50-series, SM120) only; '" + d.name + "' (compute capability " + std::to_string(d.ccMajor) + "." +
-                   std::to_string(d.ccMinor) + ") is refused";
+#if defined(CANARY_PEARL_AMPERE_BUILD)
+        v.reason = "this SM86 build supports the RTX 3080, RTX 3090 and RTX 4090 only; '" + d.name + "' (compute capability " +
+#else
+        v.reason = "CanaryMiner supports NVIDIA Blackwell (RTX 50-series, SM120) only; '" + d.name + "' (compute capability " +
+#endif
+                   std::to_string(d.ccMajor) + "." + std::to_string(d.ccMinor) + ") is refused";
         return v;
     }
     if (d.ccMajor != hit->ccMajor || d.ccMinor != hit->ccMinor) {
@@ -76,7 +94,7 @@ inline DeviceVerdict checkDevice(const DeviceIdentity &d, int compiledCc = 0) {
         v.reason = "device UUID is missing or malformed";
         return v;
     }
-    if (compiledCc != 0 && compiledCc != hit->ccMajor * 10 + hit->ccMinor) {
+    if (compiledCc != 0 && !compiledCcRuns(compiledCc, hit->ccMajor * 10 + hit->ccMinor)) {
         v.reason = std::string("this build contains SM") + std::to_string(compiledCc) + " kernels; '" + d.name + "' needs the " +
                    hit->family + " build";
         return v;
